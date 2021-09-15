@@ -133,6 +133,50 @@ describe 'postgresql::server::default_privileges', type: :define do
 
       it { is_expected.to compile.and_raise_error(%r{Illegal value for \$privilege parameter}) }
     end
+
+    context 'schemas' do
+      let :params do
+        {
+          db: 'test',
+          role: 'test',
+          privilege: 'all',
+          object_type: 'schemas',
+          schema: '',
+        }
+      end
+
+      let :pre_condition do
+        "class {'postgresql::server':}"
+      end
+
+      it { is_expected.to compile.with_all_deps }
+      it { is_expected.to contain_postgresql__server__default_privileges('test') }
+      it do
+        # rubocop:disable Layout/LineLength
+        is_expected.to contain_postgresql_psql('default_privileges:test')
+          .with_command('ALTER DEFAULT PRIVILEGES GRANT ALL ON SCHEMAS TO "test"')
+          .with_unless("SELECT 1 WHERE EXISTS (SELECT * FROM pg_default_acl AS da LEFT JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE 'test=UC' = ANY (defaclacl) and defaclobjtype = 'n')")
+        # rubocop:enable Layout/LineLength
+      end
+    end
+
+    context 'nested schemas are invalid' do
+      let :params do
+        {
+          db: 'test',
+          role: 'test',
+          privilege: 'all',
+          object_type: 'schemas',
+          schema: 'public',
+        }
+      end
+
+      let :pre_condition do
+        "class {'postgresql::server':}"
+      end
+
+      it { is_expected.to compile.and_raise_error(%r{Cannot alter default schema permissions within a schema}) }
+    end
   end
 
   context 'with specific db connection settings - default port' do
