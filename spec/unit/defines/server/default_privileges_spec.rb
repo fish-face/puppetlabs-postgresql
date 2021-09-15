@@ -227,6 +227,32 @@ describe 'postgresql::server::default_privileges', type: :define do
     end
   end
 
+  context 'with unset schema name' do
+    let :params do
+      {
+        db: 'test',
+        role: 'test',
+        privilege: 'all',
+        object_type: 'tables',
+        schema: ''
+      }
+    end
+
+    let :pre_condition do
+      "class {'postgresql::server':}"
+    end
+
+    it { is_expected.to compile.with_all_deps }
+    it { is_expected.to contain_postgresql__server__default_privileges('test') }
+    it do
+      # rubocop:disable Layout/LineLength
+      is_expected.to contain_postgresql_psql('default_privileges:test')
+        .with_command('ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO "test"')
+        .with_unless("SELECT 1 WHERE EXISTS (SELECT * FROM pg_default_acl AS da JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE 'test=arwdDxt' = ANY (defaclacl) and defaclobjtype = 'r')")
+      # rubocop:enable Layout/LineLength
+    end
+  end
+
   context 'with a role defined' do
     let :params do
       {

@@ -5,7 +5,7 @@
 # @param db Specifies the database to which you are granting access.
 # @param object_type Specify target object type: 'FUNCTIONS', 'ROUTINES', 'SEQUENCES', 'TABLES', 'TYPES'.
 # @param privilege Specifies comma-separated list of privileges to grant. Valid options: depends on object type.
-# @param schema Target schema. Defaults to 'public'.
+# @param schema Target schema. Defaults to all schemas.
 # @param psql_db Defines the database to execute the grant against. This should not ordinarily be changed from the default.
 # @param psql_user Specifies the OS user for running psql. Default value: The default user for the module, usually 'postgres'.
 # @param psql_path Specifies the OS user for running psql. Default value: The default user for the module, usually 'postgres'.
@@ -50,11 +50,11 @@ define postgresql::server::default_privileges (
   case $ensure {
     default: {
       # default is 'present'
-      $sql_command = 'ALTER DEFAULT PRIVILEGES IN SCHEMA %s GRANT %s ON %s TO "%s"'
+      $sql_command = 'ALTER DEFAULT PRIVILEGES%s GRANT %s ON %s TO "%s"'
       $unless_is = true
     }
     'absent': {
-      $sql_command = 'ALTER DEFAULT PRIVILEGES IN SCHEMA %s REVOKE %s ON %s FROM "%s"'
+      $sql_command = 'ALTER DEFAULT PRIVILEGES%s REVOKE %s ON %s FROM "%s"'
       $unless_is = false
     }
   }
@@ -70,6 +70,13 @@ define postgresql::server::default_privileges (
     $port_override = $postgresql::server::port
   }
 
+  if $schema != '' {
+    $_schema = " IN SCHEMA $schema"
+    $_check_schema = " AND nspname = '$schema'"
+  } else {
+    $_schema = ''
+    $_check_schema = ''
+  }
   ## Munge the input values
   $_object_type = upcase($object_type)
   $_privilege   = upcase($privilege)
@@ -128,12 +135,12 @@ define postgresql::server::default_privileges (
   }
 
   $_unless = $ensure ? {
-    'absent' => "SELECT 1 WHERE NOT EXISTS (SELECT * FROM pg_default_acl AS da JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE '%s=%s' = ANY (defaclacl) AND nspname = '%s' and defaclobjtype = '%s')",
-    default  => "SELECT 1 WHERE EXISTS (SELECT * FROM pg_default_acl AS da JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE '%s=%s' = ANY (defaclacl) AND nspname = '%s' and defaclobjtype = '%s')"
+    'absent' => "SELECT 1 WHERE NOT EXISTS (SELECT * FROM pg_default_acl AS da JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE '%s=%s' = ANY (defaclacl)%s and defaclobjtype = '%s')",
+    default  => "SELECT 1 WHERE EXISTS (SELECT * FROM pg_default_acl AS da JOIN pg_namespace AS n ON da.defaclnamespace = n.oid WHERE '%s=%s' = ANY (defaclacl)%s and defaclobjtype = '%s')"
   }
 
-  $unless_cmd = sprintf($_unless, $role, $_check_privilege, $schema, $_check_type)
-  $grant_cmd = sprintf($sql_command, $schema, $_privilege, $_object_type, $role)
+  $unless_cmd = sprintf($_unless, $role, $_check_privilege, $_check_schema, $_check_type)
+  $grant_cmd = sprintf($sql_command, $_schema, $_privilege, $_object_type, $role)
 
   postgresql_psql { "default_privileges:${name}":
     command          => $grant_cmd,
